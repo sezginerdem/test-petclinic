@@ -1,0 +1,112 @@
+Version: '2' #neden version 3 degilde 2: mem_limit kavrami version 3 de yok ama buna benim ihtiyacim var. mem_limit diyor ki bu image a verilen mb limiti. Boylelikle limit asimi oldugunda yalnizca o microservice cokecek tum app cokmeyecek. Version 3 de resources kaynagini koyup limiti eklemisler.
+
+#Once config server calismasi lazim ki herkes configurasyon bilgilerini alsin. sonra service discovery calismasi lazim ki tum servisler bu servise “ben hazirim calisiyorum” diyebilsin. Bu ikisi calistiktan sonra program calismasi lazim.
+
+services:
+  config-server: #once config service olusturduk. Config service hicbirseye bagli degil.
+    image: petclinic-config-server:dev
+    container_name: config-server
+    mem_limit: 512M 
+    ports:
+     - 8888:8888
+
+  discovery-server:
+    image: petclinic-discovery-server:dev
+    container_name: discovery-server
+    mem_limit: 512M
+    depends_on: #config server calistiktan sonra calissin istiyorum
+    - config-server
+    entrypoint: ["./dockerize","-wait=tcp://config-server:8888","-timeout=60s","--","java", "-Djava.security.egd=file:/dev/./urandom","-jar","/app.jar"] #depends on her zaman yeterli degil. Servisin Calismasini bekliyor ama hazir olmasini beklemiyor. Bunun icin ilave programlara ihtiyaci var. bu dockerize komutu waiting for other depencies icin var. image lara ekledigimiz dockerize komutu burada isimize yaradi iste. -wait diyoruz neyi bekle config-serveri bekle. Ne kadar bekle 60s bekle. Calismazsa exit ver cik. Sonra yeniden calistir. Sonrasindaki “--” komutu ise bundan sonraki komutlar ayri komutlar yani java ya ait komutlar oldugunu belli ediyor.
+    ports:
+     - 8761:8761
+
+  customers-service:
+    image: petclinic-customers-service:dev
+    container_name: customers-service
+    mem_limit: 512M
+    depends_on:
+    - config-server
+    - discovery-server
+    entrypoint: ["./dockerize","-wait=tcp://discovery-server:8761","-timeout=60s","--","java", "-Djava.security.egd=file:/dev/./urandom","-jar","/app.jar"] #herseyi ayni sadece service ismi ve port numarasini degistirdim
+    ports:
+    - 8081:8081
+
+  visits-service:
+    image: petclinic-visits-service:dev
+    container_name: visits-service
+    mem_limit: 512M
+    depends_on:
+     - config-server
+     - discovery-server
+    entrypoint: ["./dockerize","-wait=tcp://discovery-server:8761","-timeout=60s","--","java", "-Djava.security.egd=file:/dev/./urandom","-jar","/app.jar"]
+    ports:
+     - 8082:8082
+
+  vets-service:
+    image: petclinic-vets-service:dev
+    container_name: vets-service
+    mem_limit: 512M
+    depends_on:
+     - config-server
+     - discovery-server
+    entrypoint: ["./dockerize","-wait=tcp://discovery-server:8761","-timeout=60s","--","java", "-Djava.security.egd=file:/dev/./urandom","-jar","/app.jar"]
+    ports:
+     - 8083:8083
+
+  api-gateway:
+    image: petclinic-api-gateway:dev
+    container_name: api-gateway
+    mem_limit: 512M
+    depends_on:
+     - config-server
+     - discovery-server
+    entrypoint: ["./dockerize","-wait=tcp://discovery-server:8761","-timeout=60s","--","java", "-Djava.security.egd=file:/dev/./urandom","-jar","/app.jar"]
+    ports:
+     - 8080:8080
+
+  tracing-server:
+    image: openzipkin/zipkin #bunu kendimiz yapmadim bunu openzipkin in reposundan aldim. Bundan oncekilerin hepsini localimde olusturacagim oradan cekecegim ama bundan sonrakilerin hepsini dockerhub dan cekecegim
+    container_name: tracing-server
+    mem_limit: 512M
+    environment:
+    - JAVA_OPTS=-XX:+UnlockExperimentalVMOptions -Djava.security.egd=file:/dev/./urandom #Java 8 den sonra memory limitte sorun vardi. Memory sorununu cozmek icin buraya koydum
+    ports:
+     - 9411:9411
+
+  admin-server:
+    image: petclinic-admin-server:dev
+    container_name: admin-server
+    mem_limit: 512M
+    depends_on:
+     - config-server
+     - discovery-server
+    entrypoint: ["./dockerize","-wait=tcp://discovery-server:8761","-timeout=60s","--","java", "-Djava.security.egd=file:/dev/./urandom","-jar","/app.jar"]
+    ports:
+     - 9090:9090
+
+  hystrix-dashboard:
+    image: petclinic-hystrix-dashboard:dev
+    container_name: hystrix-dashboard
+    mem_limit: 512M
+    depends_on:
+     - config-server
+     - discovery-server
+    entrypoint: ["./dockerize","-wait=tcp://discovery-server:8761","-timeout=60s","--","java", "-Djava.security.egd=file:/dev/./urandom","-jar","/app.jar"]
+    ports:
+     - 7979:7979
+
+  ## Grafana / Prometheus
+
+  grafana-server:
+    image: petclinic-grafana-server:dev
+    container_name: grafana-server
+    mem_limit: 256M
+    ports:
+    - 3000:3000
+
+  prometheus-server:
+    image: petclinic-prometheus-server:dev
+    container_name: prometheus-server
+    mem_limit: 256M
+    ports:
+    - 9091:9090 #prometheus un defaultu 9090 ama admin service in portu 9090 oldugu icin bunu 9091 den export etmeyi tercih ettim ayni olmasin diye
